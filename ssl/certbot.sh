@@ -12,6 +12,11 @@ DOMAIN="$1"
 EMAIL="$2"
 NGINX_SITE_FILE="$3"
 
+# If the nginx site file is not an absolute path, prepend /etc/nginx/sites-available/
+if [[ "$NGINX_SITE_FILE" != /* ]]; then
+  NGINX_SITE_FILE="/etc/nginx/sites-available/$NGINX_SITE_FILE"
+fi
+
 # Check if certbot is installed
 if ! command -v certbot >/dev/null 2>&1; then
   echo "certbot not found. Installing..."
