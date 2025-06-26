@@ -37,29 +37,42 @@ if ! command -v certbot >/dev/null 2>&1; then
 fi
 
 # Obtain/renew certificate only (do not auto-edit nginx)
-CERTBOT_OUTPUT=$(mktemp)
-sudo certbot certonly --nginx -d "$DOMAIN" --email "$EMAIL" --agree-tos --non-interactive > "$CERTBOT_OUTPUT" 2>&1 || {
-  cat "$CERTBOT_OUTPUT"
-  echo "Certbot failed. Check domain and nginx config.";
-  rm -f "$CERTBOT_OUTPUT"
-  exit 1;
-}
-
-if grep -q "Certificate not yet due for renewal" "$CERTBOT_OUTPUT"; then
-  echo "Certificate not yet due for renewal; no action taken. Exiting."
-  rm -f "$CERTBOT_OUTPUT"
-  exit 0
-fi
-
-rm -f "$CERTBOT_OUTPUT"
-
-CERT_PATH="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
-KEY_PATH="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
-
 if [ "$FORCE_RENEWAL" = true ]; then
   echo "Force removal of existing certificate for $DOMAIN..."
   sudo rm -rf "/etc/letsencrypt/live/$DOMAIN" "/etc/letsencrypt/archive/$DOMAIN" "/etc/letsencrypt/renewal/$DOMAIN.conf"
+  echo "Stopping nginx to allow standalone certbot..."
+  sudo nginx -s stop || sudo systemctl stop nginx || true
+  CERTBOT_OUTPUT=$(mktemp)
+  sudo certbot certonly --standalone -d "$DOMAIN" --email "$EMAIL" --agree-tos --non-interactive > "$CERTBOT_OUTPUT" 2>&1 || {
+    cat "$CERTBOT_OUTPUT"
+    echo "Certbot failed. Check domain and nginx config.";
+    rm -f "$CERTBOT_OUTPUT"
+    exit 1;
+  }
+  rm -f "$CERTBOT_OUTPUT"
+  echo "Starting nginx..."
+  sudo nginx || sudo systemctl start nginx || {
+    echo "Failed to start nginx. Please check nginx status.";
+    exit 1;
+  }
+else
+  CERTBOT_OUTPUT=$(mktemp)
+  sudo certbot certonly --nginx -d "$DOMAIN" --email "$EMAIL" --agree-tos --non-interactive > "$CERTBOT_OUTPUT" 2>&1 || {
+    cat "$CERTBOT_OUTPUT"
+    echo "Certbot failed. Check domain and nginx config.";
+    rm -f "$CERTBOT_OUTPUT"
+    exit 1;
+  }
+  if grep -q "Certificate not yet due for renewal" "$CERTBOT_OUTPUT"; then
+    echo "Certificate not yet due for renewal; no action taken. Exiting."
+    rm -f "$CERTBOT_OUTPUT"
+    exit 0
+  fi
+  rm -f "$CERTBOT_OUTPUT"
 fi
+
+CERT_PATH="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
+KEY_PATH="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
 
 if [ ! -f "$CERT_PATH" ] || [ ! -f "$KEY_PATH" ]; then
   echo "Certificate files not found: $CERT_PATH or $KEY_PATH. Exiting."
