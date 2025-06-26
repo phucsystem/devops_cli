@@ -89,7 +89,13 @@ fi
 if grep -q "ssl_certificate_key " "$NGINX_SITE_FILE"; then
   sudo sed -i.bak "/ssl_certificate_key /c\\    ssl_certificate_key $KEY_PATH;" "$NGINX_SITE_FILE"
 else
-  sudo sed -i.bak "/ssl_certificate $CERT_PATH;/a\\    ssl_certificate_key $KEY_PATH;" "$NGINX_SITE_FILE"
+  # Ensure ssl_certificate line exists before adding ssl_certificate_key after it
+  if grep -q "ssl_certificate $CERT_PATH;" "$NGINX_SITE_FILE"; then
+    sudo sed -i.bak "/ssl_certificate $CERT_PATH;/a\\    ssl_certificate_key $KEY_PATH;" "$NGINX_SITE_FILE"
+  else
+    # If for some reason ssl_certificate line is not present, add both after server_name
+    sudo sed -i.bak "/server_name.*$DOMAIN.*/a\\    ssl_certificate $CERT_PATH;\n    ssl_certificate_key $KEY_PATH;" "$NGINX_SITE_FILE"
+  fi
 fi
 
 # Ensure listen 443 ssl is present
